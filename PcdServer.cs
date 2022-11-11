@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using NLog;
+using System.Collections.Concurrent;
 
 namespace ProtocolTransport
 {
@@ -13,7 +14,7 @@ namespace ProtocolTransport
         private IPEndPoint serverEndPoint;
         private CryptRSA rsa;
         private IParser parser;
-        //private List<uint> clientsId = new List<uint>();
+        private List<uint> allClientsId = new List<uint>();
 
         public PcdServer(IPEndPoint serverEndPoint, IParser parser)
         {
@@ -53,8 +54,9 @@ namespace ProtocolTransport
         {
             DateTime timeConnection = DateTime.Now;
             IPEndPoint clientEndPoint = (IPEndPoint)socket.RemoteEndPoint;
+            ClientInfo clientInfo = null;
+
             Transport transport = new Transport(socket);
-            bool getCommand = true;
 
             try
             {
@@ -66,14 +68,14 @@ namespace ProtocolTransport
                 AesKeyCom aesCom;
                 if (AesKeyCom.ParseToCom(rsa.Decrypt(transport.GetData()), out aesCom))
                 {
-                    ClientInfo clientInfo = new ClientInfo(clientEndPoint, timeConnection, new CryptAES(aesCom.unionKeyIV), GenerateSessionId(clientEndPoint, timeConnection));
+                    clientInfo = new ClientInfo(clientEndPoint, timeConnection, new CryptAES(aesCom.unionKeyIV), GenerateSessionId(clientEndPoint, timeConnection), allClientsId);
 
                     //send hash(SessionId)
                     SessionIdCom sessionIdCom = new SessionIdCom(clientInfo.sessionId);
                     transport.SendData(clientInfo.aes.Encrypt(sessionIdCom.ConvertToBytes()));
 
                     //client cycle
-                    while(getCommand)
+                    while(true)
                     {
                         Command com = parser.Parse(clientInfo.aes.Decrypt(transport.GetData()));
                         CommandRequest? comRequest = com as CommandRequest;
@@ -85,13 +87,28 @@ namespace ProtocolTransport
                     }
                 }
             }
+            catch (SocketException e)
+            {
+                //An existing connection was forcibly closed by the remote host
+                if (e.NativeErrorCode != 10054)
+                {
+                    LogException(e);
+                }
+            }
             catch (Exception e)
             {
                 LogException(e);
             }
             finally
             {
-                Disconnect(socket);
+                if (clientInfo == null)
+                {
+                    Disconnect(socket);
+                }
+                else
+                {
+                    Disconnect(socket, ref clientInfo);
+                }
             }
         }
 
@@ -106,6 +123,11 @@ namespace ProtocolTransport
             {
                 LogException(e);
             }
+        }
+        private void Disconnect(Socket socket, ref ClientInfo clientInfo)
+        {
+            clientInfo.RecallId();
+            Disconnect(socket);
         }
 
         private void LogException(Exception e)

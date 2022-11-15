@@ -48,10 +48,21 @@ namespace ProtocolTransport
                     }
                 }
             }
+            catch (SocketException e)
+            {
+                //An existing connection was forcibly closed by the remote host
+                if (e.NativeErrorCode != 10054)
+                {
+                    LogException(e);
+                }
+            }
             catch (Exception e)
             {
-                Disconnect();
                 LogException(e);
+            }
+            finally
+            {
+                Disconnect();
             }
 
             return false;

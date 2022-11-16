@@ -53,16 +53,14 @@ namespace ProtocolTransport
                 //An existing connection was forcibly closed by the remote host
                 if (e.NativeErrorCode != 10054)
                 {
+                    Disconnect();
                     LogException(e);
                 }
             }
             catch (Exception e)
             {
-                LogException(e);
-            }
-            finally
-            {
                 Disconnect();
+                LogException(e);
             }
 
             return false;
@@ -81,6 +79,15 @@ namespace ProtocolTransport
                 {
                     CommandAnswer comAnswer = (CommandAnswer)com;
                     return comAnswer.ExecuteCommand();
+                }
+            }
+            catch (SocketException e)
+            {
+                //An existing connection was forcibly closed by the remote host
+                if (e.NativeErrorCode != 10054)
+                {
+                    Disconnect();
+                    LogException(e);
                 }
             }
             catch (Exception e)
@@ -113,6 +120,15 @@ namespace ProtocolTransport
                 }
 
                 return true;
+            }
+            catch (SocketException e)
+            {
+                //An existing connection was forcibly closed by the remote host
+                if (e.NativeErrorCode != 10054)
+                {
+                    Disconnect();
+                    LogException(e);
+                }
             }
             catch (Exception e)
             {
